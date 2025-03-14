@@ -20,7 +20,7 @@ var_disk="2"
 var_os="debian"
 var_version="12"
 var_unprivileged="1"
-PULSE_VERSION="1.6.4"  # Current version to install
+PULSE_VERSION="1.6.4"
 
 # App Output & Base Settings
 header_info "$APP"
@@ -37,9 +37,6 @@ APPPATH="/opt/${NSAPP}"
 start
 build_container
 description
-
-# Set up locale immediately after container is created
-setup_locale_environment
 
 # Simplify the installation process with direct commands
 msg_info "Setting up Pulse installation in the container"
