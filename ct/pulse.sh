@@ -5,11 +5,11 @@
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
 # Source: https://github.com/rcourtman/pulse
 
-# NOTE: This script was significantly updated on March 13, 2025.
-# If you're seeing errors about missing files or wget commands,
-# you are using an outdated version. Please use the latest version:
-# bash -c "$(curl -s https://raw.githubusercontent.com/rcourtman/ProxmoxVE/main/ct/pulse.sh)"
-# Current version uses direct commands and doesn't rely on external installation scripts.
+
+
+
+
+
 
 export SPINNER_PID=""
 
@@ -201,35 +201,35 @@ msg_ok "Mock server service created"
 
 msg_info "Setting up environment configuration"
 pct exec ${CTID} -- bash -c "cat > /opt/${NSAPP}/.env.example << 'EOFENV'
-# Proxmox Node Configuration
-# You can add up to 10 nodes by incrementing the number in PROXMOX_NODE_X_* variables
 
-# Node 1 (Required)
+
+
+
 PROXMOX_NODE_1_NAME=pve
 PROXMOX_NODE_1_HOST=https://your-proxmox-ip:8006
 PROXMOX_NODE_1_TOKEN_ID=root@pam!pulse
 PROXMOX_NODE_1_TOKEN_SECRET=your-token-secret
 
-# Node 2 (Optional)
-# PROXMOX_NODE_2_NAME=pve2
-# PROXMOX_NODE_2_HOST=https://your-second-proxmox-ip:8006
-# PROXMOX_NODE_2_TOKEN_ID=root@pam!pulse
-# PROXMOX_NODE_2_TOKEN_SECRET=your-token-secret
 
-# API Settings
+
+
+
+
+
+
 IGNORE_SSL_ERRORS=true
 NODE_TLS_REJECT_UNAUTHORIZED=0
 API_RATE_LIMIT_MS=2000
 API_TIMEOUT_MS=90000
 API_RETRY_DELAY_MS=10000
 
-# Mock Data Settings (enabled by default for initial experience)
-# Set to 'false' when ready to connect to real Proxmox server
+
+
 USE_MOCK_DATA=true
 MOCK_DATA_ENABLED=true
 MOCK_SERVER_PORT=7656
 
-# Mock Cluster Settings
+
 MOCK_CLUSTER_ENABLED=true
 MOCK_CLUSTER_NAME=mock-cluster
 EOFENV"
