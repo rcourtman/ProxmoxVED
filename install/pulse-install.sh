@@ -20,7 +20,8 @@ var_disk="2"
 var_os="debian"
 var_version="12"
 var_unprivileged="1"
-PULSE_VERSION="1.6.4"
+PULSE_VERSION="1.6.4"  # Current version to install
+COMMIT_HASH="7586c48f"  # Current commit hash of this script
 
 # App Output & Base Settings
 header_info "$APP"
@@ -34,9 +35,28 @@ catch_errors
 # Define application path
 APPPATH="/opt/${NSAPP}"
 
+# Set up the locale environment in the container early
+function setup_locale_environment() {
+    # Install locales package if needed
+    pct exec ${CTID} -- bash -c "DEBIAN_FRONTEND=noninteractive apt-get install -y locales > /dev/null 2>&1"
+    # Configure locales silently
+    pct exec ${CTID} -- bash -c "sed -i 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen"
+    pct exec ${CTID} -- bash -c "locale-gen > /dev/null 2>&1"
+    # Set environment variables directly in container
+    pct exec ${CTID} -- bash -c "echo 'LANG=en_US.UTF-8' > /etc/default/locale"
+    pct exec ${CTID} -- bash -c "echo 'LC_ALL=en_US.UTF-8' >> /etc/default/locale"
+    pct exec ${CTID} -- bash -c "echo 'export LANG=en_US.UTF-8' >> /etc/profile"
+    pct exec ${CTID} -- bash -c "echo 'export LC_ALL=en_US.UTF-8' >> /etc/profile"
+    # Also set directly in current environment
+    pct exec ${CTID} -- bash -c "export LANG=en_US.UTF-8 && export LC_ALL=en_US.UTF-8"
+}
+
 start
 build_container
 description
+
+# Set up locale immediately after container is created
+setup_locale_environment
 
 # Simplify the installation process with direct commands
 msg_info "Setting up Pulse installation in the container"
@@ -57,7 +77,7 @@ msg_info "Creating application directory"
 pct exec ${CTID} -- bash -c "mkdir -p /opt/${NSAPP}"
 msg_ok "Application directory created"
 
-# Download and extract pre-built release instead of cloning and build
+# Download and extract pre-built release instead of cloning and building
 msg_info "Downloading Pulse v${PULSE_VERSION} release"
 pct exec ${CTID} -- bash -c "wget -qO- https://github.com/rcourtman/pulse/releases/download/v${PULSE_VERSION}/pulse-${PULSE_VERSION}.tar.gz | tar xz -C /opt/${NSAPP} --strip-components=1 > /dev/null 2>&1"
 msg_ok "Release downloaded and extracted"
@@ -97,53 +117,47 @@ PROXMOX_NODE_1_HOST=https://your-proxmox-ip:8006
 PROXMOX_NODE_1_TOKEN_ID=root@pam!pulse
 PROXMOX_NODE_1_TOKEN_SECRET=your-token-secret
 
-# Optional: Node 2
+# Node 2 (Optional)
 # PROXMOX_NODE_2_NAME=pve2
 # PROXMOX_NODE_2_HOST=https://your-second-proxmox-ip:8006
 # PROXMOX_NODE_2_TOKEN_ID=root@pam!pulse
-# PROXMOX_NODE_2_TOKEN_SECRET=your-second-token-secret
+# PROXMOX_NODE_2_TOKEN_SECRET=your-token-secret
 
-# Optional: Node 3
-# PROXMOX_NODE_3_NAME=pve3
-# PROXMOX_NODE_3_HOST=https://your-third-proxmox-ip:8006
-# PROXMOX_NODE_3_TOKEN_ID=root@pam!pulse
-# PROXMOX_NODE_3_TOKEN_SECRET=your-third-token-secret
+# API Settings
+IGNORE_SSL_ERRORS=true
+NODE_TLS_REJECT_UNAUTHORIZED=0
+API_RATE_LIMIT_MS=2000
+API_TIMEOUT_MS=90000
+API_RETRY_DELAY_MS=10000
 
-# Mock Data Configuration
+# Mock Data Settings (enabled by default for initial experience)
+# Set to 'false' when ready to connect to real Proxmox server
 USE_MOCK_DATA=true
 MOCK_DATA_ENABLED=true
-MOCK_CLUSTER_ENABLED=true
-MOCK_CLUSTER_NAME=Demo Cluster
+MOCK_SERVER_PORT=7656
 
-# Server Configuration
-PORT=7654
+# Mock Cluster Settings
+MOCK_CLUSTER_ENABLED=true
+MOCK_CLUSTER_NAME=mock-cluster
 EOFENV"
+
+pct exec ${CTID} -- bash -c "cp /opt/${NSAPP}/.env.example /opt/${NSAPP}/.env"
 msg_ok "Environment configuration created"
 
-# Copy example environment file
-msg_info "Setting up environment file"
-pct exec ${CTID} -- bash -c "cp /opt/${NSAPP}/.env.example /opt/${NSAPP}/.env"
-msg_ok "Environment file created"
-
-# Set permissions
-msg_info "Setting permissions"
-pct exec ${CTID} -- bash -c "chown -R root:root /opt/${NSAPP}"
-pct exec ${CTID} -- bash -c "chmod -R 755 /opt/${NSAPP}"
-pct exec ${CTID} -- bash -c "chmod 600 /opt/${NSAPP}/.env"
-msg_ok "Permissions set"
-
-# Create systemd service
-msg_info "Creating systemd service"
-pct exec ${CTID} -- bash -c "cat > /etc/systemd/system/${NSAPP}.service << 'EOFSVC'
+# Create service file
+msg_info "Creating service files"
+pct exec ${CTID} -- bash -c "cat > /etc/systemd/system/pulse.service << 'EOFSVC'
 [Unit]
-Description=Pulse Monitoring Dashboard
-After=network.target pulse-mock.service
+Description=Pulse for Proxmox Monitoring
+After=network.target
+After=pulse-mock.service
 
 [Service]
 Type=simple
 User=root
 WorkingDirectory=/opt/${NSAPP}
 Environment=NODE_ENV=production
+Environment=MOCK_SERVER_PORT=7656
 ExecStart=/usr/bin/node /opt/${NSAPP}/dist/server.js
 Restart=on-failure
 RestartSec=10
@@ -151,31 +165,68 @@ RestartSec=10
 [Install]
 WantedBy=multi-user.target
 EOFSVC"
-msg_ok "Systemd service created"
+msg_ok "Main service file created"
+
+# Set file permissions
+msg_info "Setting file permissions"
+pct exec ${CTID} -- bash -c "chown -R root:root /opt/${NSAPP} && chmod -R 755 /opt/${NSAPP} && chmod 600 /opt/${NSAPP}/.env && chmod 644 /opt/${NSAPP}/.env.example"
+msg_ok "File permissions set"
+
+# Save version info
+pct exec ${CTID} -- bash -c "echo '${PULSE_VERSION}' > /opt/${NSAPP}/${NSAPP}_version.txt"
+
+# Create update script
+msg_info "Creating update utility"
+pct exec ${CTID} -- bash -c "echo 'bash -c \"\$(wget -qLO - https://github.com/rcourtman/ProxmoxVE/raw/${COMMIT_HASH}/ct/pulse.sh)\"' > /usr/bin/update && chmod +x /usr/bin/update"
+msg_ok "Update utility created"
 
 # Enable and start services
-msg_info "Starting services"
-pct exec ${CTID} -- bash -c "systemctl enable pulse-mock.service"
-pct exec ${CTID} -- bash -c "systemctl enable ${NSAPP}.service"
-pct exec ${CTID} -- bash -c "systemctl start pulse-mock.service"
-pct exec ${CTID} -- bash -c "systemctl start ${NSAPP}.service"
-msg_ok "Services started"
+msg_info "Enabling and starting services"
+pct exec ${CTID} -- bash -c "systemctl enable pulse-mock > /dev/null 2>&1 && systemctl start pulse-mock > /dev/null 2>&1"
+pct exec ${CTID} -- bash -c "systemctl enable pulse > /dev/null 2>&1 && systemctl start pulse > /dev/null 2>&1"
+msg_ok "Pulse services started"
 
-# Save version
-msg_info "Saving version information"
-pct exec ${CTID} -- bash -c "echo '${PULSE_VERSION}' > /opt/${NSAPP}/${NSAPP}_version.txt"
-msg_ok "Version information saved"
+# Complete the installation message
+msg_ok "Pulse installation complete"
 
-# Show access information
-IP=$(hostname -I | awk '{print $1}')
-echo -e "${INFO}${YW} Access it using the following URL:${CL}"
-echo -e "${TAB}${GATEWAY}${BGN}http://${IP}:7654${CL}"
+# Get the IP address of the container and ensure we have a valid IP
+if [ -z "${IP}" ]; then
+  # Try multiple methods to get the IP address
+  IP=$(pct exec ${CTID} ip a s dev eth0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}' || echo "")
+  if [ -z "${IP}" ]; then
+    IP=$(pct config ${CTID} | grep -E 'net0' | grep -oP '(?<=ip=)\d+(\.\d+){3}' || echo "")
+    if [ -z "${IP}" ]; then
+      # Last resort - get IP after a brief delay
+      sleep 5
+      IP=$(pct exec ${CTID} hostname -I | awk '{print $1}' || echo "CONTAINER_IP")
+    fi
+  fi
+fi
 
-# Clean up
-msg_info "Cleaning up"
-pct exec ${CTID} -- bash -c "apt-get clean > /dev/null 2>&1"
-pct exec ${CTID} -- bash -c "rm -rf /var/lib/apt/lists/* > /dev/null 2>&1"
-msg_ok "Cleanup completed"
+# Ensure final messages are displayed properly with proper formatting
+printf "\n"
+echo -e "${BFR}${CM}${GN}Completed Successfully!${CL}\n"
+echo -e "${GN}${APP} setup has been successfully initialized.${CL}"
+echo -e "${YW}Access it using the following URL:${CL}"
+echo -e "    ${BGN}http://${IP}:7654${CL}"
 
-# Final message
-msg_ok "Installation completed successfully!"
+# Provide instructions for demo mode and real configuration
+echo -e "\n${YW}${APP} is running with demo data.${CL}"
+echo -e "    You can explore the interface immediately."
+
+echo -e "\n${YW}To connect to your actual Proxmox server:${CL}"
+echo -e "    1. Execute the following on the host:"
+echo -e "       pct exec ${CTID} -- bash -c \"nano /opt/${NSAPP}/.env\""
+echo -e "    2. Change these settings in the .env file:"
+echo -e "       - Set USE_MOCK_DATA=false"
+echo -e "       - Set MOCK_DATA_ENABLED=false"
+echo -e "       - Configure your Proxmox credentials"
+echo -e "    3. Restart the service:"
+echo -e "       pct exec ${CTID} -- bash -c \"systemctl restart pulse\""
+
+# Final instructions
+echo -e "\n${YW}To update ${APP} in the future:${CL}"
+echo -e "    pct exec ${CTID} -- bash -c \"update\""
+
+# Force a flush of output
+printf "\n"
