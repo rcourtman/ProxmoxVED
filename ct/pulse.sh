@@ -293,20 +293,4 @@ echo -e "${GN}${APP} setup has been successfully initialized.${CL}"
 echo -e "${YW}Access it using the following URL:${CL}"
 echo -e "    ${BGN}http://${IP}:7654${CL}"
 
-echo -e "\n${YW}${APP} is running with demo data.${CL}"
-echo -e "    You can explore the interface immediately."
-
-echo -e "\n${YW}To connect to your actual Proxmox server:${CL}"
-echo -e "    1. Execute the following on the host:"
-echo -e "       pct exec \${CTID} -- bash -c \"nano /opt/${NSAPP}/.env\""
-echo -e "    2. Change these settings in the .env file:"
-echo -e "       - Set USE_MOCK_DATA=false"
-echo -e "       - Set MOCK_DATA_ENABLED=false"
-echo -e "       - Configure your Proxmox credentials"
-echo -e "    3. Restart the service:"
-echo -e "       pct exec \${CTID} -- bash -c \"systemctl restart ${NSAPP}\""
-
-echo -e "\n${YW}To update ${APP} in the future:${CL}"
-echo -e "    pct exec \${CTID} -- bash -c \"update\""
-
 printf "\n"
