@@ -5,6 +5,12 @@
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
 # Source: https://github.com/rcourtman/pulse
 
+# NOTE: This script was significantly updated on March 13, 2025.
+# If you're seeing errors about missing files or wget commands,
+# you are using an outdated version. Please use the latest version:
+# bash -c "$(curl -s https://raw.githubusercontent.com/rcourtman/ProxmoxVE/main/ct/pulse.sh)"
+# Current version uses direct commands and doesn't rely on external installation scripts.
+
 export SPINNER_PID=""
 
 source <(curl -s https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/build.func)
@@ -17,8 +23,8 @@ var_disk="2"
 var_os="debian"
 var_version="12"
 var_unprivileged="1"
-PULSE_VERSION="1.6.4"
-COMMIT_HASH="7586c48f"
+PULSE_VERSION="1.6.4"  # Current version to install
+COMMIT_HASH="7586c48f"  # Current commit hash of this script
 
 header_info "$APP"
 base_settings
@@ -204,50 +210,46 @@ PROXMOX_NODE_1_HOST=https://your-proxmox-ip:8006
 PROXMOX_NODE_1_TOKEN_ID=root@pam!pulse
 PROXMOX_NODE_1_TOKEN_SECRET=your-token-secret
 
-# Optional: Node 2
+# Node 2 (Optional)
 # PROXMOX_NODE_2_NAME=pve2
 # PROXMOX_NODE_2_HOST=https://your-second-proxmox-ip:8006
 # PROXMOX_NODE_2_TOKEN_ID=root@pam!pulse
-# PROXMOX_NODE_2_TOKEN_SECRET=your-second-token-secret
+# PROXMOX_NODE_2_TOKEN_SECRET=your-token-secret
 
-# Optional: Node 3
-# PROXMOX_NODE_3_NAME=pve3
-# PROXMOX_NODE_3_HOST=https://your-third-proxmox-ip:8006
-# PROXMOX_NODE_3_TOKEN_ID=root@pam!pulse
-# PROXMOX_NODE_3_TOKEN_SECRET=your-third-token-secret
+# API Settings
+IGNORE_SSL_ERRORS=true
+NODE_TLS_REJECT_UNAUTHORIZED=0
+API_RATE_LIMIT_MS=2000
+API_TIMEOUT_MS=90000
+API_RETRY_DELAY_MS=10000
 
-# Mock Data Configuration
+# Mock Data Settings (enabled by default for initial experience)
+# Set to 'false' when ready to connect to real Proxmox server
 USE_MOCK_DATA=true
 MOCK_DATA_ENABLED=true
-MOCK_CLUSTER_ENABLED=true
-MOCK_CLUSTER_NAME=Demo Cluster
+MOCK_SERVER_PORT=7656
 
-# Server Configuration
-PORT=7654
+# Mock Cluster Settings
+MOCK_CLUSTER_ENABLED=true
+MOCK_CLUSTER_NAME=mock-cluster
 EOFENV"
+
+pct exec ${CTID} -- bash -c "cp /opt/${NSAPP}/.env.example /opt/${NSAPP}/.env"
 msg_ok "Environment configuration created"
 
-msg_info "Setting up environment file"
-pct exec ${CTID} -- bash -c "cp /opt/${NSAPP}/.env.example /opt/${NSAPP}/.env"
-msg_ok "Environment file created"
-
-msg_info "Setting permissions"
-pct exec ${CTID} -- bash -c "chown -R root:root /opt/${NSAPP}"
-pct exec ${CTID} -- bash -c "chmod -R 755 /opt/${NSAPP}"
-pct exec ${CTID} -- bash -c "chmod 600 /opt/${NSAPP}/.env"
-msg_ok "Permissions set"
-
-msg_info "Creating systemd service"
-pct exec ${CTID} -- bash -c "cat > /etc/systemd/system/${NSAPP}.service << 'EOFSVC'
+msg_info "Creating service files"
+pct exec ${CTID} -- bash -c "cat > /etc/systemd/system/pulse.service << 'EOFSVC'
 [Unit]
-Description=Pulse Monitoring Dashboard
-After=network.target pulse-mock.service
+Description=Pulse for Proxmox Monitoring
+After=network.target
+After=pulse-mock.service
 
 [Service]
 Type=simple
 User=root
 WorkingDirectory=/opt/${NSAPP}
 Environment=NODE_ENV=production
+Environment=MOCK_SERVER_PORT=7656
 ExecStart=/usr/bin/node /opt/${NSAPP}/dist/server.js
 Restart=on-failure
 RestartSec=10
@@ -255,26 +257,56 @@ RestartSec=10
 [Install]
 WantedBy=multi-user.target
 EOFSVC"
-msg_ok "Systemd service created"
+msg_ok "Main service file created"
 
-msg_info "Starting services"
-pct exec ${CTID} -- bash -c "systemctl enable pulse-mock.service"
-pct exec ${CTID} -- bash -c "systemctl enable ${NSAPP}.service"
-pct exec ${CTID} -- bash -c "systemctl start pulse-mock.service"
-pct exec ${CTID} -- bash -c "systemctl start ${NSAPP}.service"
-msg_ok "Services started"
+msg_info "Setting file permissions"
+pct exec ${CTID} -- bash -c "chown -R root:root /opt/${NSAPP} && chmod -R 755 /opt/${NSAPP} && chmod 600 /opt/${NSAPP}/.env && chmod 644 /opt/${NSAPP}/.env.example"
+msg_ok "File permissions set"
 
-msg_info "Saving version information"
 pct exec ${CTID} -- bash -c "echo '${PULSE_VERSION}' > /opt/${NSAPP}/${NSAPP}_version.txt"
-msg_ok "Version information saved"
 
-IP=$(hostname -I | awk '{print $1}')
-echo -e "${INFO}${YW} Access it using the following URL:${CL}"
-echo -e "${TAB}${GATEWAY}${BGN}http://${IP}:7654${CL}"
+msg_info "Creating update utility"
+pct exec ${CTID} -- bash -c "echo 'bash -c \"\$(wget -qLO - https://github.com/rcourtman/ProxmoxVE/raw/${COMMIT_HASH}/ct/pulse.sh)\"' > /usr/bin/update && chmod +x /usr/bin/update"
+msg_ok "Update utility created"
 
-msg_info "Cleaning up"
-pct exec ${CTID} -- bash -c "apt-get clean > /dev/null 2>&1"
-pct exec ${CTID} -- bash -c "rm -rf /var/lib/apt/lists/* > /dev/null 2>&1"
-msg_ok "Cleanup completed"
+msg_info "Enabling and starting services"
+pct exec ${CTID} -- bash -c "systemctl enable pulse-mock > /dev/null 2>&1 && systemctl start pulse-mock > /dev/null 2>&1"
+pct exec ${CTID} -- bash -c "systemctl enable pulse > /dev/null 2>&1 && systemctl start pulse > /dev/null 2>&1"
+msg_ok "Pulse services started"
 
-msg_ok "Installation completed successfully!"
+msg_ok "Pulse installation complete"
+
+if [ -z "${IP}" ]; then
+  IP=$(pct exec ${CTID} ip a s dev eth0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}' || echo "")
+  if [ -z "${IP}" ]; then
+    IP=$(pct config ${CTID} | grep -E 'net0' | grep -oP '(?<=ip=)\d+(\.\d+){3}' || echo "")
+    if [ -z "${IP}" ]; then
+      sleep 5
+      IP=$(pct exec ${CTID} hostname -I | awk '{print $1}' || echo "CONTAINER_IP")
+    fi
+  fi
+fi
+
+printf "\n"
+echo -e "${BFR}${CM}${GN}Completed Successfully!${CL}\n"
+echo -e "${GN}${APP} setup has been successfully initialized.${CL}"
+echo -e "${YW}Access it using the following URL:${CL}"
+echo -e "    ${BGN}http://${IP}:7654${CL}"
+
+echo -e "\n${YW}${APP} is running with demo data.${CL}"
+echo -e "    You can explore the interface immediately."
+
+echo -e "\n${YW}To connect to your actual Proxmox server:${CL}"
+echo -e "    1. Execute the following on the host:"
+echo -e "       pct exec ${CTID} -- bash -c \"nano /opt/${NSAPP}/.env\""
+echo -e "    2. Change these settings in the .env file:"
+echo -e "       - Set USE_MOCK_DATA=false"
+echo -e "       - Set MOCK_DATA_ENABLED=false"
+echo -e "       - Configure your Proxmox credentials"
+echo -e "    3. Restart the service:"
+echo -e "       pct exec ${CTID} -- bash -c \"systemctl restart pulse\""
+
+echo -e "\n${YW}To update ${APP} in the future:${CL}"
+echo -e "    pct exec ${CTID} -- bash -c \"update\""
+
+printf "\n"
