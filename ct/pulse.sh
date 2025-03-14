@@ -288,9 +288,4 @@ if [ -z "${IP}" ]; then
 fi
 
 printf "\n"
-echo -e "${BFR}${CM}${GN}Completed Successfully!${CL}\n"
-echo -e "${GN}${APP} setup has been successfully initialized.${CL}"
-echo -e "${YW}Access it using the following URL:${CL}"
-echo -e "    ${BGN}http://${IP}:7654${CL}"
-
-printf "\n"
+echo -e "${BFR}${CM}${GN}${APP} is ready at: ${BGN}http://${IP}:7654${CL}\n"
